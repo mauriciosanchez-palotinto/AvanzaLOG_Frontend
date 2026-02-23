@@ -11,6 +11,7 @@ export function UsuariosPage() {
     email: '',
     telefono: '',
     password: '',
+    passwordConfirm: '',
   });
 
   const { data: usuarios, isLoading, refetch } = useQuery({
@@ -30,7 +31,7 @@ export function UsuariosPage() {
       return response.data;
     },
     onSuccess: () => {
-      setFormData({ nombre: '', email: '', telefono: '', password: '' });
+      setFormData({ nombre: '', email: '', telefono: '', password: '', passwordConfirm: '' });
       setEditingId(null);
       setShowForm(false);
       refetch();
@@ -62,19 +63,33 @@ export function UsuariosPage() {
       email: usuario.email,
       telefono: usuario.telefono || '',
       password: '',
+      passwordConfirm: '',
     });
     setShowForm(true);
   };
 
   const handleCancel = () => {
     setEditingId(null);
-    setFormData({ nombre: '', email: '', telefono: '', password: '' });
+    setFormData({ nombre: '', email: '', telefono: '', password: '', passwordConfirm: '' });
     setShowForm(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData);
+    
+    // Validar que las contraseñas coincidan cuando no estamos editando
+    if (!editingId && formData.password !== formData.passwordConfirm) {
+      alert('Las contraseñas no coinciden');
+      return;
+    }
+    
+    // Si estamos editando, no incluir passwordConfirm
+    if (editingId) {
+      const { passwordConfirm, ...dataToSend } = formData;
+      createMutation.mutate(dataToSend as typeof formData);
+    } else {
+      createMutation.mutate(formData);
+    }
   };
 
   if (isLoading) {
@@ -277,6 +292,28 @@ export function UsuariosPage() {
                     required={!editingId}
                   />
                 </div>
+
+                {/* Confirmar Contraseña */}
+                {!editingId && (
+                  <div className="relative group">
+                    <label className="block text-[#7FA2C8] font-bold mb-2 tracking-wider text-sm uppercase">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        </svg>
+                        CONFIRMAR CONTRASEÑA
+                      </div>
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="Repite la contraseña"
+                      value={formData.passwordConfirm}
+                      onChange={(e) => setFormData({ ...formData, passwordConfirm: e.target.value })}
+                      className="w-full bg-gray-900/50 border-2 border-[#7B97BC]/30 text-white px-4 py-3 rounded-xl focus:border-[#7FA2C8] focus:ring-2 focus:ring-[#7FA2C8]/50 transition-all"
+                      required
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-4 pt-4">

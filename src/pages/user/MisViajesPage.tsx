@@ -18,6 +18,8 @@ export function MisViajesPage() {
     observaciones: '',
     fotos: [] as File[],
     fotosGasolinaFinal: [] as File[],
+    marcarLavado: false,
+    fotosLavado: [] as File[],
   });
 
   const { data: viajes, isLoading } = useQuery({
@@ -25,6 +27,7 @@ export function MisViajesPage() {
     queryFn: async () => {
       if (filtro === 'activos') {
         const response = await api.get('/viajes/mis-viajes/activos');
+        console.log('Viajes activos response:', response.data);
         return response.data;
       } else if (filtro === 'completados') {
         const response = await api.get('/viajes/mis-viajes');
@@ -41,14 +44,29 @@ export function MisViajesPage() {
   // Mutation para finalizar viaje
   const finalizarViajeMutation = useMutation({
     mutationFn: async (viajeId: number) => {
-      // Primero finalizar el viaje
+      // PRIMERO: Si marcó como lavado, marcar antes de finalizar
+      if (formFinalizacion.marcarLavado && formFinalizacion.fotosLavado.length > 0) {
+        await api.put(`/viajes/${viajeId}/marcar-lavado`);
+        for (const foto of formFinalizacion.fotosLavado) {
+          const fotoFormData = new FormData();
+          fotoFormData.append('file', foto);
+          fotoFormData.append('tipo', 'lavado');
+          await api.post(`/viajes/${viajeId}/evidencia`, fotoFormData, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          });
+        }
+      }
+
+      // SEGUNDO: Finalizar el viaje
       const response = await api.put(`/viajes/${viajeId}/finalizar`, {
         kmFinal: parseFloat(formFinalizacion.kmFinal),
         gasolinaFinal: formFinalizacion.gasolinaFinal ? parseFloat(formFinalizacion.gasolinaFinal) : undefined,
         observaciones: formFinalizacion.observaciones || undefined,
       });
 
-      // Subir fotos de fin de viaje
+      // TERCERO: Subir fotos de fin de viaje
       if (formFinalizacion.fotos && formFinalizacion.fotos.length > 0) {
         for (const foto of formFinalizacion.fotos) {
           const fotoFormData = new FormData();
@@ -62,7 +80,7 @@ export function MisViajesPage() {
         }
       }
 
-      // Subir fotos de gasolina final
+      // CUARTO: Subir fotos de gasolina final
       if (formFinalizacion.fotosGasolinaFinal && formFinalizacion.fotosGasolinaFinal.length > 0) {
         for (const foto of formFinalizacion.fotosGasolinaFinal) {
           const fotoFormData = new FormData();
@@ -82,7 +100,7 @@ export function MisViajesPage() {
       addToast('¡Viaje finalizado correctamente!', 'success');
       queryClient.invalidateQueries({ queryKey: ['mis-viajes'] });
       setViajeFinalizando(null);
-      setFormFinalizacion({ kmFinal: '', gasolinaFinal: '', observaciones: '', fotos: [], fotosGasolinaFinal: [] });
+      setFormFinalizacion({ kmFinal: '', gasolinaFinal: '', observaciones: '', fotos: [], fotosGasolinaFinal: [], marcarLavado: false, fotosLavado: [] });
     },
     onError: (error: any) => {
       addToast(error.response?.data?.message || 'Error al finalizar el viaje', 'error');
@@ -95,6 +113,13 @@ export function MisViajesPage() {
       addToast('Debes ingresar los km finales', 'error');
       return;
     }
+
+    // Validar que si marca lavado, debe adjuntar fotos
+    if (formFinalizacion.marcarLavado && formFinalizacion.fotosLavado.length === 0) {
+      addToast('Debes adjuntar evidencia fotográfica del lavado', 'error');
+      return;
+    }
+
     finalizarViajeMutation.mutate(viajeId);
   };
 
@@ -372,6 +397,72 @@ export function MisViajesPage() {
                           )}
                         </div>
                       </div>
+
+                      {/* Opción de Marcar como Lavado - Solo si debeLavar === true */}
+                      {viaje.debeLavar && (
+                      <div className="border-t border-[#7B97BC]/30 pt-4 mt-4">
+                        <label className="flex items-center gap-3 p-4 bg-blue-900/30 border-2 border-blue-500/30 rounded-lg cursor-pointer hover:bg-blue-900/50 transition-all">
+                          <input
+                            type="checkbox"
+                            checked={formFinalizacion.marcarLavado}
+                            onChange={(e) => setFormFinalizacion({ ...formFinalizacion, marcarLavado: e.target.checked })}
+                            className="w-5 h-5 cursor-pointer"
+                          />
+                          <div>
+                            <p className="text-white font-bold uppercase">🔧 Marcar Vehículo como Lavado</p>
+                            <p className="text-blue-300 text-xs">El vehículo necesita lavado. Adjunta evidencia fotográfica para completar el viaje</p>
+                          </div>
+                        </label>
+
+                        {/* Fotos de Lavado */}
+                        {formFinalizacion.marcarLavado && (
+                          <div className="mt-4 bg-[#5A1E5C]/60 border-2 border-blue-500/30 rounded-lg p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="bg-gradient-to-r from-blue-600 to-blue-500 p-1.5 rounded">
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <h4 className="text-white font-bold text-sm uppercase">Evidencia de Lavado (Obligatorio)</h4>
+                            </div>
+                            <input
+                              type="file"
+                              multiple
+                              accept="image/*"
+                              onChange={(e) => {
+                                const newFiles = Array.from(e.target.files || []);
+                                setFormFinalizacion({ ...formFinalizacion, fotosLavado: [...formFinalizacion.fotosLavado, ...newFiles] });
+                              }}
+                              className="w-full bg-[#5A1E5C] border-2 border-blue-500/30 text-white px-3 py-2 rounded text-xs cursor-pointer"
+                            />
+                            {formFinalizacion.fotosLavado.length > 0 && (
+                              <div className="mt-2">
+                                <span className="text-blue-400 font-bold text-xs">{formFinalizacion.fotosLavado.length} archivo(s)</span>
+                                <div className="space-y-1 max-h-20 overflow-y-auto mt-1">
+                                  {formFinalizacion.fotosLavado.map((foto, idx) => (
+                                    <div key={idx} className="flex items-center justify-between bg-[#6A2A6E]/30 p-2 rounded text-xs">
+                                      <span className="text-[#7B97BC] truncate">{foto.name}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setFormFinalizacion({ ...formFinalizacion, fotosLavado: formFinalizacion.fotosLavado.filter((_, i) => i !== idx) })}
+                                        className="text-red-400 hover:text-red-300"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {formFinalizacion.marcarLavado && formFinalizacion.fotosLavado.length === 0 && (
+                              <div className="mt-2 p-2 bg-red-900/30 border border-red-500/30 rounded text-red-400 text-xs">
+                                ⚠️ Debes adjuntar al menos una foto de evidencia del lavado
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      )}
 
                       <div className="flex gap-3">
                         <button
